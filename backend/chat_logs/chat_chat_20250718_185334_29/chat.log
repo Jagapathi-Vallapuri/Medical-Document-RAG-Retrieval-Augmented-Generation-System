@@ -1,0 +1,5 @@
+2025-07-18 18:58:01 - INFO - USER_MESSAGE:  The paper highlights the "Shock due to the unknown." Why was the diagnosis of leukemia so shocking, even when participants were told the name of the disease but not initially the word "cancer"? What does this reveal about the social representation of cancer?
+2025-07-18 18:58:01 - INFO - INTENT_CLASSIFICATION: query=' The paper highlights the "Shock due to the unknow...' intent=retrieval confidence=None
+2025-07-18 18:58:05 - INFO - DOCUMENT_SELECTION: query=' The paper highlights the "Shock due to the unknow...' selected='Enhertu_2' score=2.810830815492892 considered=8
+2025-07-18 18:58:33 - INFO - RAG_PROCESS: query=' The paper highlights the "Shock due to the unknow...' doc='Enhertu_2' chunks=5 response_len=1525
+2025-07-18 18:58:33 - INFO - BOT_RESPONSE: The diagnosis of leukemia caused significant shock among participants even when the term "leukemia" ... | METADATA: {"type": "rag_answer", "selected_document": "Enhertu_2", "selection_score": 2.810830815492892, "documents_considered": 8}

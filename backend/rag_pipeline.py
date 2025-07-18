@@ -28,7 +28,9 @@ from utils import (
     extract_pdf_id_from_s3_key,
     normalize_s3_key
 )
+
 from logger_config import get_logger
+from redis_cache import redis_cache_get, redis_cache_set
 
 # Set up logging
 logger = get_logger(__name__)
@@ -64,11 +66,13 @@ You are a clinically informed medical AI assistant. Your task is to answer quest
 QUESTION: {question}
 
 INSTRUCTIONS:
-1.  Analyze the question and the provided context.
-2.  If the context contains the answer, synthesize the information and provide a clear, concise answer.
-3.  If the context does not contain the answer, use your general medical knowledge to respond.
-4.  **Your final response should be direct and to the point. Do not include your reasoning, thought process, or self-reflection in the answer.**
-5.  Format your answer using Markdown for clarity (e.g., headings, lists, bold text).
+1. Analyze the question and the provided context carefully.
+2. If the question contains conversation history or previous context, only use it if the current question directly relates to previous topics (contains pronouns like "it", "this", "that", follow-up words like "also", "additionally", or explicitly references earlier topics).
+3. If the context contains the answer, synthesize the information and provide a clear, concise answer.
+4. If the context does not contain the answer, use your general medical knowledge to respond.
+5. Focus primarily on answering the current question - don't unnecessarily reference previous conversation unless it's directly relevant.
+6. **Your final response should be direct and to the point. Do not include your reasoning, thought process, or self-reflection in the answer.**
+7. Format your answer using Markdown for clarity (e.g., headings, lists, bold text).
 """
         
         self.prompt = ChatPromptTemplate.from_template(prompt_template)
@@ -110,13 +114,26 @@ INSTRUCTIONS:
         )
 
     def fetch_s3_data(self, pdf_id: str) -> S3Data:
-        """Fetch tables and images metadata for a given PDF from S3"""
+        """Fetch tables and images metadata for a given PDF from S3, with Redis cache"""
+        # Check in-memory cache first
         if pdf_id in self.s3_data_cache:
             return self.s3_data_cache[pdf_id]
-        
+
+        # Check Redis cache
+        redis_key = f"s3data:{pdf_id}"
+        cached = redis_cache_get(redis_key)
+        if cached:
+            # Defensive: handle both dict and string
+            tables = cached.get('tables', []) if isinstance(cached, dict) else []
+            images = cached.get('images', []) if isinstance(cached, dict) else []
+            result = S3Data(tables=tables, images=images)
+            self.s3_data_cache[pdf_id] = result
+            return result
+            return result
+
         s3 = boto3.client('s3')
         result = S3Data(tables=[], images=[])
-        
+
         # Fetch tables
         tables_key = f"{self.config.s3_prefix}/{pdf_id}/tables.json"
         try:
@@ -135,7 +152,7 @@ INSTRUCTIONS:
             error_msg = f"An error occurred fetching tables for {pdf_id}: {e}"
             logger.warning(error_msg)
             log_error_to_file(error_msg, error_type="s3")
-        
+
         # Fetch images
         images_key = f"{self.config.s3_prefix}/{pdf_id}/images.json"
         try:
@@ -143,7 +160,7 @@ INSTRUCTIONS:
             images_json = json.loads(response['Body'].read())
             if isinstance(images_json, dict) and "images" in images_json:
                 for image_data in images_json["images"]:
-                    page_num = image_data.get("page_number", -1) 
+                    page_num = image_data.get("page_number", -1)
                     caption = image_data.get("caption", "")
                     result.images.append([caption, page_num])
         except ClientError as e:
@@ -155,96 +172,130 @@ INSTRUCTIONS:
             error_msg = f"An error occurred fetching images for {pdf_id}: {e}"
             logger.warning(error_msg)
             log_error_to_file(error_msg, error_type="s3")
-        
-        # Cache the result
+
+        # Cache the result in both Redis and memory
         self.s3_data_cache[pdf_id] = result
+        redis_cache_set(redis_key, result, ex=3600)
         return result
 
     def retrieve_context(
-        self, 
-        query: str, 
-        limit: int = 5, 
+        self,
+        query: str,
+        limit: int = 5,
         pdf_id: Optional[str] = None
     ) -> RetrievalResult:
-        """Retrieve relevant context from MongoDB and enrich with S3 data"""
+        """Retrieve relevant context from MongoDB and enrich with S3 data, with Redis cache for Mongo results"""
         db = self.mongo_client["vector_database"]
         query_embedding = self.get_text_embedding(query)
-        
+
+        # Redis cache key for MongoDB results
+        redis_key = f"mongo:context:{query}:{limit}:{pdf_id}"
+        cached = redis_cache_get(redis_key)
+        if cached and isinstance(cached, dict):
+            # Defensive: ensure all fields exist and are correct type
+            context_chunks = []
+            for chunk in cached.get("context_chunks", []):
+                # Ensure tables is present for TEXT chunks
+                if chunk.get("content_type") == "text" or chunk.get("content_type") == ContentType.TEXT:
+                    context_chunks.append(ContextChunk(
+                        content_type=ContentType.TEXT,
+                        text=chunk.get("text", ""),
+                        pdf_id=chunk.get("pdf_id", ""),
+                        page=chunk.get("page", 0),
+                        score=chunk.get("score", 0.0),
+                        tables=chunk.get("tables", [])
+                    ))
+                else:
+                    context_chunks.append(ContextChunk(
+                        content_type=ContentType.IMAGE,
+                        text=chunk.get("text", ""),
+                        pdf_id=chunk.get("pdf_id", ""),
+                        page=chunk.get("page", 0),
+                        score=chunk.get("score", 0.0),
+                        tables=[]
+                    ))
+            return RetrievalResult(
+                context_chunks=context_chunks,
+                raw_mongo_text=cached.get("raw_mongo_text", []),
+                raw_mongo_images=cached.get("raw_mongo_images", []),
+                s3_cache=cached.get("s3_cache", {})
+            )
+
         # Search text embeddings
         text_pipeline = [
             {
                 "$vectorSearch": {
-                    "queryVector": query_embedding, 
-                    "path": "embedding", 
-                    "numCandidates": self.config.vector_search_candidates, 
-                    "limit": limit, 
+                    "queryVector": query_embedding,
+                    "path": "embedding",
+                    "numCandidates": self.config.vector_search_candidates,
+                    "limit": limit,
                     "index": "text_search"
                 }
             }
         ]
-        
+
         if pdf_id:
             text_pipeline.append({"$match": {"metadata.pdf_id": pdf_id}})
-            
+
         text_pipeline.append({
             "$project": {
-                "_id": 0, 
-                "text": 1, 
-                "pdf_id": "$metadata.pdf_id", 
-                "page_start": "$metadata.page_start", 
+                "_id": 0,
+                "text": 1,
+                "pdf_id": "$metadata.pdf_id",
+                "page_start": "$metadata.page_start",
                 "score": {"$meta": "vectorSearchScore"}
             }
         })
-        
+
         text_results = list(db["textEmbeddings"].aggregate(text_pipeline))
         text_results = [doc for doc in text_results if doc.get('score', 0) > self.config.score_threshold]
-        
+
         # Search image embeddings
         image_pipeline = [
             {
                 "$vectorSearch": {
-                    "queryVector": query_embedding, 
-                    "path": "embedding", 
-                    "numCandidates": self.config.vector_search_candidates, 
-                    "limit": limit, 
+                    "queryVector": query_embedding,
+                    "path": "embedding",
+                    "numCandidates": self.config.vector_search_candidates,
+                    "limit": limit,
                     "index": "image_search"
                 }
             }
         ]
-        
+
         if pdf_id:
             image_pipeline.append({"$match": {"metadata.pdf_id": pdf_id}})
-            
+
         image_pipeline.append({
             "$project": {
-                "_id": 0, 
-                "text": 1, 
-                "pdf_id": "$metadata.pdf_id", 
-                "page": "$metadata.page", 
+                "_id": 0,
+                "text": 1,
+                "pdf_id": "$metadata.pdf_id",
+                "page": "$metadata.page",
                 "score": {"$meta": "vectorSearchScore"}
             }
         })
-        
+
         image_results = list(db["imageEmbeddings"].aggregate(image_pipeline))
         image_results = [img for img in image_results if img.get('score', 0) > self.config.score_threshold]
-        
+
         # Build context chunks
         context_chunks = []
-        
+
         # Process text results
         for doc in text_results:
             doc_pdf_id = doc.get("pdf_id")
             page = doc.get("page_start")
-            
+
             # Fetch S3 data if needed
             s3_data = self.fetch_s3_data(doc_pdf_id) if doc_pdf_id else S3Data(tables=[], images=[])
-            
+
             # Find tables for this page
             tables_for_chunk = [
-                table for table in s3_data.tables 
+                table for table in s3_data.tables
                 if table and table.get("page") == page
             ]
-            
+
             chunk = ContextChunk(
                 content_type=ContentType.TEXT,
                 text=doc.get("text", ""),
@@ -254,7 +305,7 @@ INSTRUCTIONS:
                 tables=tables_for_chunk
             )
             context_chunks.append(chunk)
-        
+
         # Process image results
         for img_doc in image_results:
             chunk = ContextChunk(
@@ -265,13 +316,21 @@ INSTRUCTIONS:
                 score=img_doc.get("score", 0.0)
             )
             context_chunks.append(chunk)
-        
-        return RetrievalResult(
+
+        result = RetrievalResult(
             context_chunks=context_chunks,
             raw_mongo_text=text_results,
             raw_mongo_images=image_results,
             s3_cache={k: v.__dict__ for k, v in self.s3_data_cache.items()}
         )
+        # Cache the result in Redis
+        redis_cache_set(redis_key, {
+            "context_chunks": [chunk.__dict__ for chunk in context_chunks],
+            "raw_mongo_text": text_results,
+            "raw_mongo_images": image_results,
+            "s3_cache": {k: v.__dict__ for k, v in self.s3_data_cache.items()}
+        }, ex=600)
+        return result
 
     def find_top_documents_with_normalization(
         self, 
@@ -506,7 +565,7 @@ INSTRUCTIONS:
         self, 
         query: str, 
         normalization: Optional[str] = None,
-        top_k: int = 3
+        top_k: int = 5
     ) -> AutoQueryResponse:
         """
         Automatically select the best document and generate an answer.
@@ -514,7 +573,7 @@ INSTRUCTIONS:
         Args:
             query: User's question
             normalization: Normalization method to use
-            top_k: Number of chunks to retrieve from selected document
+            top_k: Number of chunks to retrieve from selected document (default: 5)
             
         Returns:
             AutoQueryResponse with document selection and answer

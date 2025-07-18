@@ -26,8 +26,8 @@ class RAGConfig:
     
     # Pipeline parameters
     score_threshold: float = 0.75
-    max_chunks: int = 2
-    vector_search_candidates: int = 100
+    max_chunks: int = 5  # Restored from 3
+    vector_search_candidates: int = 100  # Restored from 50
     
     # Document selection parameters
     doc_selection_chunks: int = 30
@@ -70,7 +70,7 @@ class RAGConfig:
             embedding_model=os.getenv("EMBEDDING_MODEL", "NeuML/pubmedbert-base-embeddings"),
             llm_model=os.getenv("LLM_MODEL", "ii-medical-8b-1706@q4_k_m"),
             score_threshold=float(os.getenv("SCORE_THRESHOLD", "0.75")),
-            max_chunks=int(os.getenv("MAX_CHUNKS", "2")),
+            max_chunks=int(os.getenv("MAX_CHUNKS", "5")),
             doc_selection_chunks=int(os.getenv("DOC_SELECTION_CHUNKS", "30")),
             normalization_method=os.getenv("NORMALIZATION_METHOD", "sqrt"),
             min_document_chunks=int(os.getenv("MIN_DOCUMENT_CHUNKS", "2")),

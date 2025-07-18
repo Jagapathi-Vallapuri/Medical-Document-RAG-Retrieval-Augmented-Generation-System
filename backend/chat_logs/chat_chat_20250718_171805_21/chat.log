@@ -1,0 +1,40 @@
+2025-07-18 17:18:17 - INFO - USER_MESSAGE: Why did the researchers choose to adapt a staging system from human breast cancer (the AJCC Cancer Staging Manual)?
+2025-07-18 17:18:17 - INFO - INTENT_CLASSIFICATION: query='Why did the researchers choose to adapt a staging ...' intent=retrieval confidence=None
+2025-07-18 17:18:23 - INFO - DOCUMENT_SELECTION: query='Why did the researchers choose to adapt a staging ...' selected='40150308' score=3.412975526540756 considered=6
+2025-07-18 17:18:50 - INFO - RAG_PROCESS: query='Why did the researchers choose to adapt a staging ...' doc='40150308' chunks=5 response_len=1890
+2025-07-18 17:18:50 - INFO - BOT_RESPONSE: The researchers adapted the seventh edition of the **AJCC Cancer Staging Manual** for feline mammary... | METADATA: {"type": "rag_answer", "selected_document": "40150308", "selection_score": 3.412975526540756, "documents_considered": 6}
+2025-07-18 17:18:56 - INFO - USER_MESSAGE: Based on the multivariate survival analysis, which factor had the highest Hazard Ratio (HR) for predicting poorer overall survival, and what was its value?
+2025-07-18 17:18:56 - INFO - INTENT_CLASSIFICATION: query='Based on the multivariate survival analysis, which...' intent=retrieval confidence=None
+2025-07-18 17:18:56 - INFO - DOCUMENT_SELECTION: query='Based on the multivariate survival analysis, which...' selected='40150308' score=2.809624123122126 considered=7
+2025-07-18 17:19:42 - INFO - RAG_PROCESS: query='Previous conversation context:
+User: Why did the r...' doc='40150308' chunks=5 response_len=851
+2025-07-18 17:19:42 - INFO - BOT_RESPONSE: Based on the multivariate analysis conducted in this study:
+
+**Tumor size >3 cm had the highest Haza... | METADATA: {"type": "rag_answer", "selected_document": "40150308", "selection_score": 2.809624123122126, "documents_considered": 7}
+2025-07-18 17:20:26 - INFO - USER_MESSAGE: The study found that the new staging system offered improved prognostic differentiation. How did the survival outcomes for the new Stage IIIA, IIIB, and IIIC specifically demonstrate this?
+
+2025-07-18 17:20:26 - INFO - INTENT_CLASSIFICATION: query='The study found that the new staging system offere...' intent=retrieval confidence=None
+2025-07-18 17:20:30 - INFO - DOCUMENT_SELECTION: query='The study found that the new staging system offere...' selected='40150308' score=3.080103265510527 considered=7
+2025-07-18 17:20:58 - INFO - RAG_PROCESS: query='Previous conversation context:
+User: Based on the ...' doc='40150308' chunks=5 response_len=959
+2025-07-18 17:20:58 - INFO - BOT_RESPONSE: ### Survival Outcomes by New Stage III Subcategories  
+
+- **Stage IIIA (T3N0M0)**: Median OS = 691 d... | METADATA: {"type": "rag_answer", "selected_document": "40150308", "selection_score": 3.080103265510527, "documents_considered": 7}
+2025-07-18 17:21:14 - INFO - USER_MESSAGE: What are the main limitations of the current World Health Organization (WHO) staging system for FMC that this study aimed to address?
+
+2025-07-18 17:21:14 - INFO - INTENT_CLASSIFICATION: query='What are the main limitations of the current World...' intent=retrieval confidence=None
+2025-07-18 17:21:14 - INFO - DOCUMENT_SELECTION: query='What are the main limitations of the current World...' selected='40150308' score=2.779477278907893 considered=9
+2025-07-18 17:21:39 - INFO - RAG_PROCESS: query='Previous conversation context:
+User: The study fou...' doc='40150308' chunks=5 response_len=1240
+2025-07-18 17:21:39 - INFO - BOT_RESPONSE: ### Main Limitations of the Current WHO Staging System for Feline Mammary Carcinoma  
+
+The study ide... | METADATA: {"type": "rag_answer", "selected_document": "40150308", "selection_score": 2.779477278907893, "documents_considered": 9}
+2025-07-18 17:21:57 - INFO - USER_MESSAGE: In the "Discussion" section, why is skin ulceration highlighted as such a critical prognostic factor, warranting its inclusion in a new T4 category?
+
+2025-07-18 17:21:57 - INFO - INTENT_CLASSIFICATION: query='In the "Discussion" section, why is skin ulceratio...' intent=retrieval confidence=None
+2025-07-18 17:21:57 - INFO - DOCUMENT_SELECTION: query='In the "Discussion" section, why is skin ulceratio...' selected='40150308' score=3.320585298538208 considered=11
+2025-07-18 17:22:30 - INFO - RAG_PROCESS: query='Previous conversation context:
+User: What are the ...' doc='40150308' chunks=5 response_len=1472
+2025-07-18 17:22:30 - INFO - BOT_RESPONSE: ### Critical Role of Skin Ulceration as a Prognostic Factor  
+
+In the **Discussion** section, skin u... | METADATA: {"type": "rag_answer", "selected_document": "40150308", "selection_score": 3.320585298538208, "documents_considered": 11}
