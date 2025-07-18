@@ -2,7 +2,7 @@ from fastapi import APIRouter, File, UploadFile, Form, Body
 from fastapi.responses import JSONResponse
 from upload import PDFUploader
 import os
-from rag_pipeline import run_rag
+from rag_pipeline import RAGPipeline
 from pydantic import BaseModel
 from logger_config import get_logger
 from typing import List
@@ -11,11 +11,16 @@ logger = get_logger(__name__)
 
 router = APIRouter()
 uploader = PDFUploader()
+# Instantiate a singleton RAGPipeline for all requests
+pipeline = RAGPipeline()
 
 class QuestionRequest(BaseModel):
     message: str
     documents: List[str] = []
     document_ids: List[str] = []
+
+class AutoQueryRequest(BaseModel):
+    message: str
 
 class UploadResponse(BaseModel):
     message: str
@@ -28,6 +33,14 @@ class QuestionResponse(BaseModel):
     message: str
     response: str
     answer: str
+
+class AutoQueryResponse(BaseModel):
+    message: str
+    response: str
+    answer: str
+    selected_document: str
+    selection_score: float
+    documents_considered: int
 
 class DocumentInfo(BaseModel):
     id: str
@@ -77,21 +90,57 @@ async def ask_question(request: QuestionRequest):
         elif request.document_ids:
             pdf_filename = request.document_ids[0]
         
+        # If no document specified, use auto-selection
         if not pdf_filename:
-            return JSONResponse({"error": "No document selected."}, status_code=400)
+            result = pipeline.ask_with_auto_selection(
+                query=request.message,
+                normalization="sqrt",
+                top_k=3
+            )
+            if result.status == "no_documents_found":
+                return JSONResponse({"error": "No relevant documents found."}, status_code=404)
+            if result.status == "generation_failed":
+                return JSONResponse({"error": result.answer}, status_code=500)
+            return {"message": result.answer, "response": result.answer, "answer": result.answer}
         
-        result = run_rag(request.message, pdf_filename, debug_log_dir="logs")
-        
-        if not result or not result.get("cleaned_response"):
-            return JSONResponse({"error": "Failed to generate response."}, status_code=500)
-        
-        return {
-            "message": result.get("cleaned_response", "No answer."),
-            "response": result.get("cleaned_response", "No answer."),
-            "answer": result.get("cleaned_response", "No answer.")
-        }
+        # Specific-document logic
+        rag_response = pipeline.run(request.message, pdf_filename, debug_log_dir="logs")
+        text = rag_response.cleaned_response or "No answer."
+        return {"message": text, "response": text, "answer": text}
     except Exception as e:
         logger.error(f"Error in ask_question: {str(e)}")
+        return JSONResponse({"error": "Internal server error occurred."}, status_code=500)
+
+@router.post("/auto_ask/")
+async def auto_ask_question(request: AutoQueryRequest):
+    try:
+        # Validate input
+        if not request.message.strip():
+            return JSONResponse({"error": "Question cannot be empty."}, status_code=400)
+        
+        # Use the singleton pipeline for auto-selection
+        result = pipeline.ask_with_auto_selection(
+            query=request.message,
+            normalization="sqrt",
+            top_k=3
+        )
+        if result.status == "no_documents_found":
+            return JSONResponse({"error": "No relevant documents found."}, status_code=404)
+        if result.status == "generation_failed":
+            return JSONResponse({"error": result.answer}, status_code=500)
+        return {
+            "message": result.answer,
+            "response": result.answer,
+            "answer": result.answer,
+            "selected_document": result.selected_document or "",
+            "selection_score": result.selection_score or 0.0,
+            "documents_considered": result.documents_considered
+        }
+            
+        # No cleanup needed here; pipeline will be closed on app shutdown
+            
+    except Exception as e:
+        logger.error(f"Error in auto_ask_question: {str(e)}")
         return JSONResponse({"error": "Internal server error occurred."}, status_code=500)
 
 @router.get("/health/")

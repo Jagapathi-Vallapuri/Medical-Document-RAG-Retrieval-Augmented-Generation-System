@@ -63,3 +63,35 @@ class S3Data:
             self.tables = []
         if self.images is None:
             self.images = []
+
+@dataclass
+class DocumentSelectionResult:
+    """Result from document selection process"""
+    doc_id: str
+    relevance_score: float
+    rank: int
+    preview_text: Optional[str] = None
+    total_chunks: int = 0
+    content_summary: Optional[Dict] = None
+
+@dataclass
+class QueryToDocResponse:
+    """Response for query-to-document mapping"""
+    status: str
+    query: str
+    total_documents_found: int
+    documents_returned: int
+    documents: List[DocumentSelectionResult]
+    best_match: Optional[Dict] = None
+    normalization_method: str = "sqrt"
+
+@dataclass
+class AutoQueryResponse:
+    """Response for automatic document selection + QA"""
+    status: str
+    query: str
+    selected_document: Optional[str] = None
+    selection_score: Optional[float] = None
+    answer: str = ""
+    documents_considered: int = 0
+    selection_method: str = "sqrt"

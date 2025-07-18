@@ -29,6 +29,12 @@ class RAGConfig:
     max_chunks: int = 2
     vector_search_candidates: int = 100
     
+    # Document selection parameters
+    doc_selection_chunks: int = 30
+    normalization_method: str = "sqrt"
+    min_document_chunks: int = 2
+    max_documents_returned: int = 5
+    
     # Summarization parameters
     max_summary_length: int = 150
     min_summary_length: int = 50
@@ -65,6 +71,10 @@ class RAGConfig:
             llm_model=os.getenv("LLM_MODEL", "ii-medical-8b-1706@q4_k_m"),
             score_threshold=float(os.getenv("SCORE_THRESHOLD", "0.75")),
             max_chunks=int(os.getenv("MAX_CHUNKS", "2")),
+            doc_selection_chunks=int(os.getenv("DOC_SELECTION_CHUNKS", "30")),
+            normalization_method=os.getenv("NORMALIZATION_METHOD", "sqrt"),
+            min_document_chunks=int(os.getenv("MIN_DOCUMENT_CHUNKS", "2")),
+            max_documents_returned=int(os.getenv("MAX_DOCUMENTS_RETURNED", "5")),
         )
     
     def validate(self) -> None:
@@ -77,3 +87,12 @@ class RAGConfig:
         
         if self.embedding_retries < 1:
             raise ValueError("embedding_retries must be at least 1")
+        
+        if self.normalization_method not in ['none', 'linear', 'sqrt', 'log']:
+            raise ValueError("normalization_method must be one of: none, linear, sqrt, log")
+        
+        if self.min_document_chunks < 1:
+            raise ValueError("min_document_chunks must be at least 1")
+        
+        if self.max_documents_returned < 1:
+            raise ValueError("max_documents_returned must be at least 1")

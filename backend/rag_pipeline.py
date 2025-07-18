@@ -15,7 +15,10 @@ from fastapi import UploadFile
 
 # Local imports
 from rag_config import RAGConfig
-from models import ContentType, ContextChunk, RetrievalResult, RAGResponse, S3Data
+from models import (
+    ContentType, ContextChunk, RetrievalResult, RAGResponse, S3Data,
+    DocumentSelectionResult, QueryToDocResponse, AutoQueryResponse
+)
 from utils import (
     save_log_to_file, 
     log_error_to_file, 
@@ -270,6 +273,308 @@ INSTRUCTIONS:
             s3_cache={k: v.__dict__ for k, v in self.s3_data_cache.items()}
         )
 
+    def find_top_documents_with_normalization(
+        self, 
+        query: str, 
+        top_k_chunks: Optional[int] = None, 
+        normalization: Optional[str] = None, 
+        min_chunks: Optional[int] = None
+    ) -> List[Tuple[str, float]]:
+        """
+        Find the most relevant documents with configurable normalization methods.
+        
+        Args:
+            query: Search query string
+            top_k_chunks: Number of chunks to retrieve per collection (default from config)
+            normalization: Normalization method ('none', 'linear', 'sqrt', 'log') (default from config)
+            min_chunks: Minimum number of chunks required for a document to be considered (default from config)
+        
+        Returns:
+            List of tuples: (doc_id, normalized_score)
+        """
+        import math
+        
+        # Use config defaults if not provided
+        if top_k_chunks is None:
+            top_k_chunks = self.config.doc_selection_chunks
+        if normalization is None:
+            normalization = self.config.normalization_method
+        if min_chunks is None:
+            min_chunks = self.config.min_document_chunks
+        
+        db = self.mongo_client["vector_database"]
+        query_embedding = self.get_text_embedding(query)
+
+        all_results = []
+        
+        # Search text embeddings
+        text_pipeline = [
+            {
+                "$vectorSearch": {
+                    "queryVector": query_embedding, 
+                    "path": "embedding", 
+                    "numCandidates": top_k_chunks * 2, 
+                    "limit": top_k_chunks, 
+                    "index": "text_search"
+                }
+            },
+            {
+                "$project": {
+                    "_id": 0, 
+                    "doc_id": "$metadata.pdf_id", 
+                    "score": {"$meta": "vectorSearchScore"}
+                }
+            }
+        ]
+        all_results.extend(list(db["textEmbeddings"].aggregate(text_pipeline)))
+
+        # Search image embeddings
+        image_pipeline = [
+            {
+                "$vectorSearch": {
+                    "queryVector": query_embedding, 
+                    "path": "embedding", 
+                    "numCandidates": top_k_chunks * 2, 
+                    "limit": top_k_chunks, 
+                    "index": "image_search"
+                }
+            },
+            {
+                "$project": {
+                    "_id": 0, 
+                    "doc_id": "$metadata.pdf_id", 
+                    "score": {"$meta": "vectorSearchScore"}
+                }
+            }
+        ]
+        all_results.extend(list(db["imageEmbeddings"].aggregate(image_pipeline)))
+        
+        logger.info(f"Stage 1: Found {len(all_results)} candidate chunks across all documents.")
+        
+        # Aggregate scores by document
+        doc_scores = {}
+        doc_chunk_counts = {}
+        for result in all_results:
+            doc_id = result.get("doc_id")
+            score = result.get("score")
+            if doc_id and score:
+                doc_scores[doc_id] = doc_scores.get(doc_id, 0.0) + score
+                doc_chunk_counts[doc_id] = doc_chunk_counts.get(doc_id, 0) + 1
+        
+        # Filter documents by minimum chunk count
+        filtered_docs = {doc_id: score for doc_id, score in doc_scores.items() 
+                        if doc_chunk_counts[doc_id] >= min_chunks}
+        
+        filtered_count = len(doc_scores) - len(filtered_docs)
+        if filtered_count > 0:
+            logger.info(f"Filtered out {filtered_count} documents with < {min_chunks} chunks")
+        
+        if not filtered_docs:
+            logger.warning(f"No documents found with >= {min_chunks} chunks")
+            return []
+
+        logger.info(f"Applied '{normalization}' normalization to {len(filtered_docs)} documents.")
+        
+        # Apply normalization
+        normalized_scores = []
+        for doc_id, total_score in filtered_docs.items():
+            chunk_count = doc_chunk_counts[doc_id]
+            
+            if normalization == 'none':
+                normalized_score = total_score
+            elif normalization == 'linear':
+                normalized_score = total_score / chunk_count
+            elif normalization == 'sqrt':
+                normalized_score = total_score / (chunk_count ** 0.5)
+            elif normalization == 'log':
+                normalized_score = total_score / math.log(chunk_count + 1)
+            else:
+                raise ValueError(f"Unknown normalization method: {normalization}")
+            
+            normalized_scores.append((doc_id, normalized_score))
+        
+        # Sort by normalized scores
+        sorted_docs = sorted(normalized_scores, key=lambda x: x[1], reverse=True)
+        
+        # Log top 3 for debugging
+        logger.debug(f"Top 3 Documents with {normalization.upper()} Normalization:")
+        for i, (doc_id, norm_score) in enumerate(sorted_docs[:3], 1):
+            raw_score = doc_scores[doc_id]
+            chunk_count = doc_chunk_counts[doc_id]
+            logger.debug(f"{i}. {doc_id}: norm_score={norm_score:.4f} (raw={raw_score:.4f}, chunks={chunk_count})")
+        
+        return sorted_docs
+
+    def get_most_relevant_documents(
+        self, 
+        query: str, 
+        top_n: Optional[int] = None, 
+        show_previews: bool = True,
+        normalization: Optional[str] = None
+    ) -> QueryToDocResponse:
+        """
+        Get ranked list of most relevant documents for a query.
+        
+        Args:
+            query: The search query
+            top_n: Number of top documents to return (default from config)
+            show_previews: Whether to show content previews (default True)
+            normalization: Normalization method to use (default from config)
+        
+        Returns:
+            QueryToDocResponse with ranked documents
+        """
+        if top_n is None:
+            top_n = self.config.max_documents_returned
+        if normalization is None:
+            normalization = self.config.normalization_method
+            
+        logger.info(f"Finding most relevant documents for query: '{query[:60]}{'...' if len(query) > 60 else ''}'")
+        
+        # Find top documents with normalization
+        ranked_docs = self.find_top_documents_with_normalization(
+            query, normalization=normalization
+        )
+        
+        if not ranked_docs:
+            return QueryToDocResponse(
+                status="no_documents_found",
+                query=query,
+                total_documents_found=0,
+                documents_returned=0,
+                documents=[],
+                normalization_method=normalization
+            )
+        
+        # Get top N documents
+        top_docs = ranked_docs[:top_n] if len(ranked_docs) >= top_n else ranked_docs
+        
+        logger.info(f"TOP {len(top_docs)} DOCUMENTS selected from {len(ranked_docs)} total")
+        
+        document_results = []
+        
+        for i, (doc_id, score) in enumerate(top_docs, 1):
+            logger.debug(f"{i}. {doc_id} (score: {score:.3f})")
+            
+            doc_info = DocumentSelectionResult(
+                doc_id=doc_id,
+                relevance_score=score,
+                rank=i
+            )
+            
+            if show_previews:
+                try:
+                    preview_chunks = self.retrieve_context(
+                        query, limit=1, pdf_id=doc_id
+                    )
+                    
+                    if preview_chunks.context_chunks and preview_chunks.context_chunks[0].text:
+                        preview_text = preview_chunks.context_chunks[0].text
+                        short_preview = preview_text[:200] + "..." if len(preview_text) > 200 else preview_text
+                        
+                        doc_info.preview_text = short_preview
+                        doc_info.content_summary = {
+                            "full_text": preview_text,
+                            "page": preview_chunks.context_chunks[0].page,
+                            "chunk_score": preview_chunks.context_chunks[0].score,
+                            "content_type": preview_chunks.context_chunks[0].content_type.value
+                        }
+                except Exception as e:
+                    logger.warning(f"Failed to get preview for {doc_id}: {e}")
+                    doc_info.preview_text = None
+            
+            document_results.append(doc_info)
+        
+        best_match = None
+        if top_docs:
+            best_match = {
+                "doc_id": top_docs[0][0],
+                "score": top_docs[0][1]
+            }
+        
+        return QueryToDocResponse(
+            status="success",
+            query=query,
+            total_documents_found=len(ranked_docs),
+            documents_returned=len(top_docs),
+            documents=document_results,
+            best_match=best_match,
+            normalization_method=normalization
+        )
+
+    def ask_with_auto_selection(
+        self, 
+        query: str, 
+        normalization: Optional[str] = None,
+        top_k: int = 3
+    ) -> AutoQueryResponse:
+        """
+        Automatically select the best document and generate an answer.
+        
+        Args:
+            query: User's question
+            normalization: Normalization method to use
+            top_k: Number of chunks to retrieve from selected document
+            
+        Returns:
+            AutoQueryResponse with document selection and answer
+        """
+        if normalization is None:
+            normalization = self.config.normalization_method
+            
+        logger.info(f"Auto-selecting document and answering query: '{query[:60]}{'...' if len(query) > 60 else ''}'")
+        
+        # Get the best document
+        doc_selection = self.get_most_relevant_documents(
+            query, top_n=1, show_previews=False, normalization=normalization
+        )
+        
+        if doc_selection.status != "success" or not doc_selection.documents:
+            return AutoQueryResponse(
+                status="no_documents_found",
+                query=query,
+                answer="No relevant documents found in the knowledge base.",
+                documents_considered=doc_selection.total_documents_found,
+                selection_method=normalization
+            )
+        
+        best_doc = doc_selection.documents[0]
+        selected_doc_id = best_doc.doc_id
+        selection_score = best_doc.relevance_score
+        
+        logger.info(f"Selected document: {selected_doc_id} (score: {selection_score:.4f})")
+        
+        # Generate answer using the selected document
+        try:
+            rag_response = self.run(
+                question=query,
+                pdf_s3_key=selected_doc_id,
+                top_k=top_k,
+                use_summarization=False
+            )
+            
+            return AutoQueryResponse(
+                status="success",
+                query=query,
+                selected_document=selected_doc_id,
+                selection_score=selection_score,
+                answer=rag_response.cleaned_response,
+                documents_considered=doc_selection.total_documents_found,
+                selection_method=normalization
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to generate answer: {e}")
+            return AutoQueryResponse(
+                status="generation_failed",
+                query=query,
+                selected_document=selected_doc_id,
+                selection_score=selection_score,
+                answer=f"Document selected successfully but failed to generate answer: {str(e)}",
+                documents_considered=doc_selection.total_documents_found,
+                selection_method=normalization
+            )
+
     def _fallback_retrieve(self, query: str, limit: int = 2) -> RetrievalResult:
         """Fallback retrieval without score threshold"""
         db = self.mongo_client["vector_database"]
@@ -478,7 +783,6 @@ INSTRUCTIONS:
         # Generate response
         cleaned_response = self.generate_response(context, question)
         
-        # Save markdown response if debug mode
         markdown_filepath = None
         if debug_log_dir:
             md_path = os.path.join(debug_log_dir, f"{timestamp}_final_response.md")

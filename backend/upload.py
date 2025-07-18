@@ -13,7 +13,7 @@ load_dotenv()
 # Set up logging
 logger = get_logger(__name__)
 
-BUCKET = "pdf-storage-for-rag-1"  # <-- Set your actual bucket name here
+BUCKET = "pdf-storage-for-rag-1" 
 PDFS_FOLDER = "pdfs"
 
 class PDFUploader:
@@ -93,12 +93,12 @@ class PDFUploader:
                 s3_key = os.path.join(PDFS_FOLDER, s3_key).replace('\\', '/')
             
             # Prepare extra arguments for PDF
-            extra_args = {
+            extra_args: Dict[str, Any] = {
                 'ContentType': 'application/pdf',
                 'ContentDisposition': 'inline'  # Allow viewing in browser
             }
             if metadata:
-                # Ensure all metadata values are strings
+                # Ensure all metadata keys and values are strings
                 extra_args['Metadata'] = {str(k): str(v) for k, v in metadata.items()}
             
             # Upload the PDF
@@ -246,12 +246,12 @@ class PDFUploader:
                 print(f"❌ File is not a PDF: {filename}")
                 return False
             s3_key = os.path.join(PDFS_FOLDER, filename).replace('\\', '/')
-            extra_args = {
+            extra_args: Dict[str, Any] = {
                 'ContentType': 'application/pdf',
                 'ContentDisposition': 'inline'
             }
             if metadata:
-                extra_args['Metadata'] = {str(k): str(v) for k, v in metadata.items()}
+                extra_args['Metadata'] = metadata
             print(f"📤 Uploading PDF fileobj to s3://{self.bucket_name}/{s3_key}")
             self.s3_client.upload_fileobj(fileobj, self.bucket_name, s3_key, ExtraArgs=extra_args)
             print(f"✅ Successfully uploaded PDF: {s3_key}")
