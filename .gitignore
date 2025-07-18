@@ -1,0 +1,11 @@
+node_modules/
+.env
+logs/
+error_logs/
+__pycache__/
+*.pyc
+static/
+templates/
+uploads/
+test/
+.venv

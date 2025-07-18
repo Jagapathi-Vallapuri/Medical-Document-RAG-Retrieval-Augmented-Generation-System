@@ -17,7 +17,10 @@ renderer.code = function(code, language) {
   const validLanguage = language && /^[a-zA-Z0-9-_]+$/.test(language)
   const langClass = validLanguage ? ` class="language-${language}"` : ''
   
-  return `<pre><code${langClass}>${marked.parseInline(code)}</code></pre>`
+  // Escape HTML in code content to prevent XSS
+  const escapedCode = DOMPurify.sanitize(code, { ALLOWED_TAGS: [] })
+  
+  return `<pre><code${langClass}>${escapedCode}</code></pre>`
 }
 
 // Custom link renderer with security
@@ -48,11 +51,14 @@ marked.use({ renderer })
  */
 export function markdownToHtml(markdown) {
   if (!markdown) return ''
-  
+
   try {
+    // Custom rule for \boxed{}
+    const boxedHtml = markdown.replace(/\\boxed{([^}]+)}/g, '<div class="boxed-answer">$1</div>');
+
     // Convert markdown to HTML
-    const html = marked.parse(markdown)
-    
+    const html = marked.parse(boxedHtml)
+
     // Sanitize HTML to prevent XSS attacks
     const cleanHtml = DOMPurify.sanitize(html, {
       ALLOWED_TAGS: [
@@ -65,7 +71,8 @@ export function markdownToHtml(markdown) {
         'a',
         'table', 'thead', 'tbody', 'tr', 'th', 'td',
         'hr',
-        'img'
+        'img',
+        'div' // Allow div for the boxed answer
       ],
       ALLOWED_ATTR: [
         'href', 'title', 'target', 'rel',
@@ -75,7 +82,7 @@ export function markdownToHtml(markdown) {
       ],
       ALLOWED_URI_REGEXP: /^(?:https?|mailto):/i
     })
-    
+
     return cleanHtml
   } catch (error) {
     console.error('Error parsing markdown:', error)
@@ -93,7 +100,10 @@ export function markdownToHtml(markdown) {
 export function simpleMarkdown(text) {
   if (!text) return ''
   
-  return DOMPurify.sanitize(text)
+  // First sanitize the input text
+  const sanitizedText = DOMPurify.sanitize(text, { ALLOWED_TAGS: [] })
+  
+  return sanitizedText
     // Code blocks
     .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
     // Inline code
@@ -102,8 +112,17 @@ export function simpleMarkdown(text) {
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     // Italic
     .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    // Links
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+    // Links (with URL validation)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+      // Basic URL validation
+      const urlPattern = /^https?:\/\//i
+      if (urlPattern.test(url)) {
+        const cleanUrl = DOMPurify.sanitize(url)
+        const cleanText = DOMPurify.sanitize(text)
+        return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${cleanText}</a>`
+      }
+      return match // Return original if URL is invalid
+    })
     // Line breaks
     .replace(/\n/g, '<br>')
 }

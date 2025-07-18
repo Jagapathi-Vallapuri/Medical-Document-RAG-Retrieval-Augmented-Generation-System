@@ -1,6 +1,6 @@
 export class ApiService {
   constructor() {
-    this.baseURL = 'http://localhost:8000' 
+    this.baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
   }
 
   async sendMessage(message, selectedDocuments = []) {
