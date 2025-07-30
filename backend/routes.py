@@ -219,7 +219,7 @@ async def auto_ask_question_stream(request: AutoQueryRequest):
                         "documents_considered": 0
                     })
                 
-                bot_message = ChatMessage(
+                bot_message = ChatMessage(  
                     id=str(uuid.uuid4()),
                     content=answer,
                     message_type=MessageType.BOT,
