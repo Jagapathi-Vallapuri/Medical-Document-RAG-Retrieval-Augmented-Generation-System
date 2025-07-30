@@ -56,7 +56,7 @@ class RAGResponse:
 class S3Data:
     """Data retrieved from S3"""
     tables: List[Dict]
-    images: List[List]  # [caption, page_number] pairs
+    images: List[List]  
     
     def __post_init__(self):
         if self.tables is None:

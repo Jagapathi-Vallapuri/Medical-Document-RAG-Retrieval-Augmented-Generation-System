@@ -87,7 +87,6 @@ class RedisChatManager:
                 )
                 messages.append(message)
             
-            # Create chat session
             chat = ChatSession(
                 chat_id=data["chat_id"],
                 title=data["title"],
@@ -189,7 +188,6 @@ class RedisChatManager:
             if not self.redis_client:
                 return []
             
-            # Get chat IDs sorted by timestamp (most recent first)
             chat_ids = self.redis_client.zrevrange(self.chat_list_key, 0, -1)
             
             chats = []
@@ -226,7 +224,6 @@ class RedisChatManager:
             # Remove from Redis
             deleted = self.redis_client.delete(chat_key)
             
-            # Remove from chat list
             self.redis_client.zrem(self.chat_list_key, chat_id)
             
             if deleted:

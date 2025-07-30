@@ -5,7 +5,6 @@ import os
 def create_app():
     app = FastAPI()
     
-    # Parse ALLOWED_ORIGINS, strip whitespace, and ignore empty entries
     allowed_origins = [origin.strip() for origin in os.getenv(
         "ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173"
     ).split(",") if origin.strip()]
@@ -14,7 +13,6 @@ def create_app():
         CORSMiddleware,
         allow_origins=allowed_origins,
         allow_credentials=True,
-        # Allow all standard HTTP methods and preflight
         allow_methods=["*"],
         allow_headers=["*"],
         expose_headers=["*"],

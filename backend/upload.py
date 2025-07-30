@@ -7,10 +7,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 from logger_config import get_logger
 
-# Load environment variables
 load_dotenv()
-
-# Set up logging
 logger = get_logger(__name__)
 
 BUCKET = "pdf-storage-for-rag-1" 
@@ -34,7 +31,6 @@ class PDFUploader:
         self.bucket_name = BUCKET
         self.region_name = region_name
         
-        # Initialize S3 client
         try:
             if aws_access_key_id and aws_secret_access_key:
                 self.s3_client = boto3.client(
@@ -44,7 +40,6 @@ class PDFUploader:
                     region_name=region_name
                 )
             else:
-                # Use environment variables or IAM role
                 self.s3_client = boto3.client('s3', region_name=region_name)
                 
         except NoCredentialsError:
@@ -76,32 +71,26 @@ class PDFUploader:
             bool: True if successful, False otherwise
         """
         try:
-            # Check if file exists
             if not os.path.exists(local_pdf_path):
                 print(f"❌ PDF file not found: {local_pdf_path}")
                 return False
             
-            # Check if file is a PDF
             if not self.is_pdf_file(local_pdf_path):
                 print(f"❌ File is not a PDF: {local_pdf_path}")
                 return False
             
-            # Always upload to /pdfs folder
             if s3_key is None:
                 s3_key = os.path.join(PDFS_FOLDER, os.path.basename(local_pdf_path)).replace('\\', '/')
             else:
                 s3_key = os.path.join(PDFS_FOLDER, s3_key).replace('\\', '/')
             
-            # Prepare extra arguments for PDF
             extra_args: Dict[str, Any] = {
                 'ContentType': 'application/pdf',
-                'ContentDisposition': 'inline'  # Allow viewing in browser
+                'ContentDisposition': 'inline'
             }
             if metadata:
-                # Ensure all metadata keys and values are strings
                 extra_args['Metadata'] = {str(k): str(v) for k, v in metadata.items()}
             
-            # Upload the PDF
             logger.debug(f"Uploading PDF {local_pdf_path} to s3://{self.bucket_name}/{s3_key}")
             self.s3_client.upload_file(local_pdf_path, self.bucket_name, s3_key, ExtraArgs=extra_args)
             logger.info(f"Successfully uploaded PDF: {s3_key}")
@@ -133,21 +122,17 @@ class PDFUploader:
         skipped_count = 0
         upload_results = []
         
-        # Walk through directory and find PDF files
         for root, dirs, files in os.walk(local_directory):
             for file in files:
                 local_file_path = os.path.join(root, file)
                 
-                # Skip non-PDF files
                 if not self.is_pdf_file(local_file_path):
                     skipped_count += 1
                     continue
                 
-                # Generate S3 key
                 relative_path = os.path.relpath(local_file_path, local_directory)
                 s3_key = os.path.join(PDFS_FOLDER, relative_path).replace('\\', '/')
                 
-                # Upload PDF
                 success = self.upload_pdf(local_file_path, s3_key)
                 if success:
                     uploaded_count += 1
@@ -220,13 +205,13 @@ class PDFUploader:
                 return False
             s3_key = os.path.join(PDFS_FOLDER, os.path.basename(s3_key)).replace('\\', '/')
             
-            print(f"🗑️ Deleting PDF s3://{self.bucket_name}/{s3_key}")
+            print(f"Deleting PDF s3://{self.bucket_name}/{s3_key}")
             self.s3_client.delete_object(Bucket=self.bucket_name, Key=s3_key)
-            print(f"✅ Successfully deleted PDF: {s3_key}")
+            print(f" Successfully deleted PDF: {s3_key}")
             return True
             
         except ClientError as e:
-            print(f"❌ Error deleting PDF {s3_key}: {e}")
+            print(f" Error deleting PDF {s3_key}: {e}")
             return False
     
     def upload_pdf_fileobj(self, fileobj, filename: str, metadata: Optional[Dict[str, str]] = None) -> bool:

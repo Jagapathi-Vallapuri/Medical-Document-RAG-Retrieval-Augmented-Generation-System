@@ -41,7 +41,6 @@ class EnvironmentValidator:
         missing_vars = []
         config = {}
         
-        # Check required variables
         for var in cls.REQUIRED_VARS:
             value = os.getenv(var)
             if not value:
@@ -54,7 +53,6 @@ class EnvironmentValidator:
                 f"Missing required environment variables: {', '.join(missing_vars)}"
             )
         
-        # Set optional variables with defaults
         for var, default in cls.OPTIONAL_VARS.items():
             config[var] = os.getenv(var, default)
         
@@ -70,10 +68,9 @@ class EnvironmentValidator:
         """
         try:
             config = cls.validate()
-            print("✅ Environment Configuration Valid")
+            print("Environment Configuration Valid")
             print("=" * 40)
             
-            # Print required variables (masked for security)
             for var in cls.REQUIRED_VARS:
                 value = config[var]
                 if "key" in var.lower() or "secret" in var.lower():

@@ -37,7 +37,7 @@ class ChatSession:
     messages: List[ChatMessage] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
-    context_window: int = 2  # Number of recent messages to include in context
+    context_window: int = 2 
     
     def add_message(self, message: ChatMessage) -> None:
         """Add a message to the chat"""
@@ -61,7 +61,6 @@ class ChatSession:
             if msg.message_type == MessageType.USER:
                 context_parts.append(f"User: {msg.content}")
             elif msg.message_type == MessageType.BOT:
-                # Truncate long bot responses for context
                 content = msg.content[:200] + "..." if len(msg.content) > 200 else msg.content
                 context_parts.append(f"Assistant: {content}")
         

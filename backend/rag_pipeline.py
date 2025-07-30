@@ -32,7 +32,6 @@ from utils import (
 from logger_config import get_logger
 from redis_cache import redis_cache_get, redis_cache_set
 
-# Set up logging
 logger = get_logger(__name__)
 
 
@@ -43,13 +42,9 @@ class RAGPipeline:
         self.config = config or RAGConfig.from_env()
         self.config.validate()
         
-        # Initialize MongoDB client
-        self.mongo_client = MongoClient(self.config.mongo_uri)
-        
-        # Initialize S3 cache
+        self.mongo_client = MongoClient(self.config.mongo_uri)        
         self.s3_data_cache: Dict[str, S3Data] = {}
         
-        # Initialize LLM
         self._setup_llm()
         
         logger.info("RAG Pipeline initialized successfully")
@@ -77,7 +72,6 @@ INSTRUCTIONS:
         
         self.prompt = ChatPromptTemplate.from_template(prompt_template)
         
-        # Set environment variables for LM Studio
         os.environ["OPENAI_API_KEY"] = "lm-studio"
         os.environ["OPENAI_API_BASE"] = self.config.openai_api_base
         
@@ -115,26 +109,21 @@ INSTRUCTIONS:
 
     def fetch_s3_data(self, pdf_id: str) -> S3Data:
         """Fetch tables and images metadata for a given PDF from S3, with Redis cache"""
-        # Check in-memory cache first
         if pdf_id in self.s3_data_cache:
             return self.s3_data_cache[pdf_id]
 
-        # Check Redis cache
         redis_key = f"s3data:{pdf_id}"
         cached = redis_cache_get(redis_key)
         if cached:
-            # Defensive: handle both dict and string
             tables = cached.get('tables', []) if isinstance(cached, dict) else []
             images = cached.get('images', []) if isinstance(cached, dict) else []
             result = S3Data(tables=tables, images=images)
             self.s3_data_cache[pdf_id] = result
             return result
-            return result
 
         s3 = boto3.client('s3')
         result = S3Data(tables=[], images=[])
 
-        # Fetch tables
         tables_key = f"{self.config.s3_prefix}/{pdf_id}/tables.json"
         try:
             response = s3.get_object(Bucket=self.config.s3_bucket, Key=tables_key)
@@ -153,27 +142,29 @@ INSTRUCTIONS:
             logger.warning(error_msg)
             log_error_to_file(error_msg, error_type="s3")
 
-        # Fetch images
         images_key = f"{self.config.s3_prefix}/{pdf_id}/images.json"
         try:
             response = s3.get_object(Bucket=self.config.s3_bucket, Key=images_key)
+            
             images_json = json.loads(response['Body'].read())
+            
             if isinstance(images_json, dict) and "images" in images_json:
                 for image_data in images_json["images"]:
                     page_num = image_data.get("page_number", -1)
                     caption = image_data.get("caption", "")
                     result.images.append([caption, page_num])
+        
         except ClientError as e:
             if e.response['Error']['Code'] != "NoSuchKey":
                 error_msg = f"Could not fetch images for {pdf_id}: {e}"
                 logger.warning(error_msg)
                 log_error_to_file(error_msg, error_type="s3")
+       
         except Exception as e:
             error_msg = f"An error occurred fetching images for {pdf_id}: {e}"
             logger.warning(error_msg)
             log_error_to_file(error_msg, error_type="s3")
 
-        # Cache the result in both Redis and memory
         self.s3_data_cache[pdf_id] = result
         redis_cache_set(redis_key, result, ex=3600)
         return result
@@ -188,14 +179,12 @@ INSTRUCTIONS:
         db = self.mongo_client["vector_database"]
         query_embedding = self.get_text_embedding(query)
 
-        # Redis cache key for MongoDB results
         redis_key = f"mongo:context:{query}:{limit}:{pdf_id}"
         cached = redis_cache_get(redis_key)
+
         if cached and isinstance(cached, dict):
-            # Defensive: ensure all fields exist and are correct type
             context_chunks = []
             for chunk in cached.get("context_chunks", []):
-                # Ensure tables is present for TEXT chunks
                 if chunk.get("content_type") == "text" or chunk.get("content_type") == ContentType.TEXT:
                     context_chunks.append(ContextChunk(
                         content_type=ContentType.TEXT,
@@ -221,7 +210,6 @@ INSTRUCTIONS:
                 s3_cache=cached.get("s3_cache", {})
             )
 
-        # Search text embeddings
         text_pipeline = [
             {
                 "$vectorSearch": {
@@ -250,7 +238,6 @@ INSTRUCTIONS:
         text_results = list(db["textEmbeddings"].aggregate(text_pipeline))
         text_results = [doc for doc in text_results if doc.get('score', 0) > self.config.score_threshold]
 
-        # Search image embeddings
         image_pipeline = [
             {
                 "$vectorSearch": {
@@ -279,18 +266,14 @@ INSTRUCTIONS:
         image_results = list(db["imageEmbeddings"].aggregate(image_pipeline))
         image_results = [img for img in image_results if img.get('score', 0) > self.config.score_threshold]
 
-        # Build context chunks
         context_chunks = []
 
-        # Process text results
         for doc in text_results:
             doc_pdf_id = doc.get("pdf_id")
             page = doc.get("page_start")
 
-            # Fetch S3 data if needed
             s3_data = self.fetch_s3_data(doc_pdf_id) if doc_pdf_id else S3Data(tables=[], images=[])
 
-            # Find tables for this page
             tables_for_chunk = [
                 table for table in s3_data.tables
                 if table and table.get("page") == page
@@ -306,7 +289,6 @@ INSTRUCTIONS:
             )
             context_chunks.append(chunk)
 
-        # Process image results
         for img_doc in image_results:
             chunk = ContextChunk(
                 content_type=ContentType.IMAGE,
@@ -323,7 +305,7 @@ INSTRUCTIONS:
             raw_mongo_images=image_results,
             s3_cache={k: v.__dict__ for k, v in self.s3_data_cache.items()}
         )
-        # Cache the result in Redis
+        
         redis_cache_set(redis_key, {
             "context_chunks": [chunk.__dict__ for chunk in context_chunks],
             "raw_mongo_text": text_results,
@@ -366,7 +348,6 @@ INSTRUCTIONS:
 
         all_results = []
         
-        # Search text embeddings
         text_pipeline = [
             {
                 "$vectorSearch": {
@@ -410,7 +391,6 @@ INSTRUCTIONS:
         
         logger.info(f"Stage 1: Found {len(all_results)} candidate chunks across all documents.")
         
-        # Aggregate scores by document
         doc_scores = {}
         doc_chunk_counts = {}
         for result in all_results:
@@ -420,7 +400,6 @@ INSTRUCTIONS:
                 doc_scores[doc_id] = doc_scores.get(doc_id, 0.0) + score
                 doc_chunk_counts[doc_id] = doc_chunk_counts.get(doc_id, 0) + 1
         
-        # Filter documents by minimum chunk count
         filtered_docs = {doc_id: score for doc_id, score in doc_scores.items() 
                         if doc_chunk_counts[doc_id] >= min_chunks}
         
@@ -434,7 +413,6 @@ INSTRUCTIONS:
 
         logger.info(f"Applied '{normalization}' normalization to {len(filtered_docs)} documents.")
         
-        # Apply normalization
         normalized_scores = []
         for doc_id, total_score in filtered_docs.items():
             chunk_count = doc_chunk_counts[doc_id]
@@ -452,10 +430,8 @@ INSTRUCTIONS:
             
             normalized_scores.append((doc_id, normalized_score))
         
-        # Sort by normalized scores
         sorted_docs = sorted(normalized_scores, key=lambda x: x[1], reverse=True)
         
-        # Log top 3 for debugging
         logger.debug(f"Top 3 Documents with {normalization.upper()} Normalization:")
         for i, (doc_id, norm_score) in enumerate(sorted_docs[:3], 1):
             raw_score = doc_scores[doc_id]
@@ -490,7 +466,6 @@ INSTRUCTIONS:
             
         logger.info(f"Finding most relevant documents for query: '{query[:60]}{'...' if len(query) > 60 else ''}'")
         
-        # Find top documents with normalization
         ranked_docs = self.find_top_documents_with_normalization(
             query, normalization=normalization
         )
@@ -505,7 +480,6 @@ INSTRUCTIONS:
                 normalization_method=normalization
             )
         
-        # Get top N documents
         top_docs = ranked_docs[:top_n] if len(ranked_docs) >= top_n else ranked_docs
         
         logger.info(f"TOP {len(top_docs)} DOCUMENTS selected from {len(ranked_docs)} total")
@@ -603,7 +577,6 @@ INSTRUCTIONS:
         
         logger.info(f"Selected document: {selected_doc_id} (score: {selection_score:.4f})")
         
-        # Generate answer using the selected document
         try:
             rag_response = self.run(
                 question=query,
@@ -682,7 +655,6 @@ INSTRUCTIONS:
             }
         ]))
         
-        # Build context chunks
         context_chunks = []
         
         for doc in text_results:
@@ -730,7 +702,6 @@ INSTRUCTIONS:
         """Build context string from chunks"""
         context_parts = []
         
-        # Limit to max chunks
         limited_chunks = context_chunks[:self.config.max_chunks]
         
         for chunk in limited_chunks:
@@ -741,7 +712,6 @@ INSTRUCTIONS:
             
             context_str = f"Source: {chunk.pdf_id}, Page: {chunk.page}\nContent: {text}"
             
-            # Add tables if available
             if chunk.tables:
                 table_str = format_tables_for_llm(chunk.tables)
                 if table_str:
@@ -794,19 +764,16 @@ INSTRUCTIONS:
             save_log_to_file(debug_log_dir, f"{timestamp}_mongo_image_results", retrieval_result.raw_mongo_images)
             save_log_to_file(debug_log_dir, f"{timestamp}_s3_cache", retrieval_result.s3_cache)
         
-        # If no high-score content found, use fallback
         if not retrieval_result.has_content():
             logger.info("No high-score content found, using fallback retrieval")
             retrieval_result = self._fallback_retrieve(question, limit=2)
         
-        # If still no content, return empty response
         if not retrieval_result.has_content():
             return RAGResponse(
                 cleaned_response="No relevant information found.",
                 raw_response="No relevant information found."
             )
         
-        # Build context string
         context = self._build_context_string(retrieval_result.context_chunks, use_summarization)
         
         if not context:
@@ -815,7 +782,6 @@ INSTRUCTIONS:
                 raw_response="No relevant information with content was found."
             )
         
-        # Log context if debug mode
         if debug_log_dir:
             try:
                 save_log_to_file(
@@ -855,7 +821,7 @@ INSTRUCTIONS:
         
         return RAGResponse(
             cleaned_response=cleaned_response,
-            raw_response=cleaned_response,  # Raw response is cleaned in generate_response
+            raw_response=cleaned_response,  
             markdown_filepath=markdown_filepath,
             context_used=retrieval_result.context_chunks
         )

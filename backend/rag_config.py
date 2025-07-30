@@ -26,9 +26,9 @@ class RAGConfig:
     
     # Pipeline parameters
     score_threshold: float = 0.75
-    max_chunks: int = 5  # Restored from 3
-    vector_search_candidates: int = 100  # Restored from 50
-    
+    max_chunks: int = 5
+    vector_search_candidates: int = 100
+
     # Document selection parameters
     doc_selection_chunks: int = 30
     normalization_method: str = "sqrt"
@@ -51,7 +51,6 @@ class RAGConfig:
         """Load configuration from environment variables"""
         load_dotenv()
         
-        # Required environment variables
         huggingface_key = os.getenv("HUGGINGFACE_API_KEY")
         mongo_uri = os.getenv("MONGO_URI")
         openai_api_base = os.getenv("OPENAI_API_BASE")

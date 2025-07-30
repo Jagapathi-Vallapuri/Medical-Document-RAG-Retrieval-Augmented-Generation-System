@@ -66,7 +66,6 @@ def deserialize_from_redis(data, target_type=None):
         )
     return data
 
-# Singleton Redis client
 _redis_client = None
 _redis_available = None
 
@@ -80,7 +79,6 @@ def get_redis_client():
         try:
             redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
             _redis_client = redis.Redis.from_url(redis_url, decode_responses=True)
-            # Test the connection
             _redis_client.ping()
             _redis_available = True
             logger.info("Redis connection established successfully")

@@ -306,7 +306,7 @@ async def auto_ask_question_stream(request: AutoQueryRequest):
                     use_summarization=False
                 )
                 
-                logger.info(f"✅ Generated answer for {selected_doc_id}, length: {len(rag_response.cleaned_response) if rag_response.cleaned_response else 0}")
+                logger.info(f"Generated answer for {selected_doc_id}, length: {len(rag_response.cleaned_response) if rag_response.cleaned_response else 0}")
                 
                 # Log RAG process
                 if chat_id:
@@ -314,11 +314,10 @@ async def auto_ask_question_stream(request: AutoQueryRequest):
                         chat_id,
                         enhanced_query,
                         selected_doc_id,
-                        5,  # top_k chunks
+                        5,
                         len(rag_response.cleaned_response) if rag_response.cleaned_response else 0
                     )
                     
-                    # Log bot response
                     chat_logger.log_bot_response(chat_id, rag_response.cleaned_response, {
                         "type": "rag_answer",
                         "selected_document": selected_doc_id,
@@ -326,7 +325,6 @@ async def auto_ask_question_stream(request: AutoQueryRequest):
                         "documents_considered": doc_selection.total_documents_found
                     })
                 
-                # Add bot response to chat history
                 bot_message = ChatMessage(
                     id=str(uuid.uuid4()),
                     content=rag_response.cleaned_response,
@@ -340,8 +338,7 @@ async def auto_ask_question_stream(request: AutoQueryRequest):
                 )
                 chat_manager.add_message(chat_id, bot_message)
                 
-                # Step 4: Send final answer
-                logger.info(f"📤 Sending final answer for chat {chat_id} with document {selected_doc_id}")
+                logger.info(f"Sending final answer for chat {chat_id} with document {selected_doc_id}")
                 yield f"data: {json.dumps({
                     'type': 'final_answer',
                     'message': rag_response.cleaned_response,
@@ -356,7 +353,6 @@ async def auto_ask_question_stream(request: AutoQueryRequest):
         except Exception as e:
             logger.error(f"Error in auto_ask_question_stream: {str(e)}")
             
-            # Log error to chat logger
             if request.chat_id:
                 chat_logger.log_error(request.chat_id, "stream_error", str(e), {
                     "message": request.message,
@@ -411,7 +407,6 @@ def debug_available_docs():
         return {"error": str(e)}
 
 # Chat Management Endpoints
-
 @router.post("/chats/")
 def create_chat(request: CreateChatRequest):
     """Create a new chat session"""
@@ -463,7 +458,6 @@ def get_chat_logs(chat_id: str):
         if not chat_dir.exists():
             return JSONResponse({"error": "No logs found for this chat"}, status_code=404)
         
-        # Read events file
         events_file = chat_dir / "events.jsonl"
         events = []
         

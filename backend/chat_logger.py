@@ -32,23 +32,18 @@ class ChatLogger:
             Logger instance for the chat
         """
         if chat_id not in self.chat_loggers:
-            # Create chat-specific directory
             chat_dir = self.base_log_dir / f"chat_{chat_id}"
             chat_dir.mkdir(exist_ok=True)
             
-            # Create logger
             logger = logging.getLogger(f"chat_{chat_id}")
             logger.setLevel(logging.DEBUG)
             
-            # Clear existing handlers
             logger.handlers.clear()
             
-            # Create file handler for this chat
             log_file = chat_dir / "chat.log"
             file_handler = logging.FileHandler(log_file)
             file_handler.setLevel(logging.DEBUG)
             
-            # Create formatter
             formatter = logging.Formatter(
                 '%(asctime)s - %(levelname)s - %(message)s',
                 datefmt='%Y-%m-%d %H:%M:%S'
@@ -56,7 +51,6 @@ class ChatLogger:
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
             
-            # Prevent propagation to root logger
             logger.propagate = False
             
             self.chat_loggers[chat_id] = logger
@@ -172,7 +166,6 @@ class ChatLogger:
             with open(events_file, 'a', encoding='utf-8') as f:
                 f.write(json.dumps(event_data) + '\n')
         except Exception as e:
-            # Fallback to regular logging if JSON saving fails
             main_logger = logging.getLogger(__name__)
             main_logger.error(f"Failed to save chat event for {chat_id}: {e}")
     
@@ -197,7 +190,6 @@ class ChatLogger:
                     elif event['type'] == 'error':
                         error_count += 1
                     
-                    # Update last activity
                     event_time = datetime.fromisoformat(event['timestamp'])
                     if last_activity is None or event_time > last_activity:
                         last_activity = event_time
@@ -219,7 +211,6 @@ class ChatLogger:
         for chat_dir in self.base_log_dir.iterdir():
             if chat_dir.is_dir() and chat_dir.name.startswith('chat_'):
                 try:
-                    # Check last modification time
                     if chat_dir.stat().st_mtime < cutoff_date:
                         import shutil
                         shutil.rmtree(chat_dir)
@@ -227,5 +218,4 @@ class ChatLogger:
                 except Exception as e:
                     logging.error(f"Failed to cleanup {chat_dir.name}: {e}")
 
-# Global chat logger instance
 chat_logger = ChatLogger()
