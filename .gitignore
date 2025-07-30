@@ -10,3 +10,5 @@ uploads/
 test/
 .venv
 .vscode/
+config.yaml
+chat_logs/

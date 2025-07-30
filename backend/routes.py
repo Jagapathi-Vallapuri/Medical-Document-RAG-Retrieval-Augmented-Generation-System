@@ -201,13 +201,9 @@ async def auto_ask_question_stream(request: AutoQueryRequest):
                 chat_logger.log_intent_classification(chat_id, request.message, intent)
 
             if intent == "direct":
-                # For direct questions, send immediate response
-                
-                # Include conversation context for direct answers
-                # Optimized: Simple context injection, letting the smart prompt template handle relevance
+
                 conversation_context = chat.get_conversation_summary()
                 if conversation_context:
-                    # Simple context injection - let the model decide relevance
                     enhanced_query = f"Previous conversation context:\n{conversation_context}\n\nCurrent question: {request.message}"
                 else:
                     enhanced_query = request.message
@@ -223,7 +219,6 @@ async def auto_ask_question_stream(request: AutoQueryRequest):
                         "documents_considered": 0
                     })
                 
-                # Add bot response to chat history
                 bot_message = ChatMessage(
                     id=str(uuid.uuid4()),
                     content=answer,
