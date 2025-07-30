@@ -343,3 +343,67 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - **FastAPI**: For the high-performance backend framework
 - **React**: For the modern frontend framework
 - **Medical AI Community**: For domain expertise and model development
+
+```mermaid
+graph TD
+    subgraph User
+        U[User]
+    end
+
+    subgraph Frontend [Frontend]
+        style Frontend fill:#e6f7ff,stroke:#91d5ff,stroke-width:2px
+        FE_UI[Chat Interface]
+        FE_API["api.js\nAPI Caller"]
+        FE_UI --> FE_API
+    end
+
+    subgraph Backend [Backend]
+        style Backend fill:#f6ffed,stroke:#b7eb8f,stroke-width:2px
+        B_Router[API Router]
+        B_Upload[PDF Upload Handler]
+        B_Intent[Intent Classifier]
+        B_RAG[RAG Pipeline Engine]
+        B_Chat[Chat Manager]
+        B_Router --> B_Upload
+        B_Router --> B_Intent
+        B_Router --> B_RAG
+        B_Router --> B_Chat
+    end
+
+    subgraph DataStores [Storage & Caching]
+        style DataStores fill:#fffbe6,stroke:#ffe58f,stroke-width:2px
+        DB_S3["AWS S3\nRaw PDFs, Extracted Content"]
+        DB_Mongo["MongoDB\nVector Store"]
+        DB_Redis["Redis\nSession & Cache"]
+    end
+
+    subgraph AI_Services [AI/ML Services]
+        style AI_Services fill:#f9f0ff,stroke:#d3adf7,stroke-width:2px
+        AI_HF["Hugging Face API\nPubMedBERT Embedding"]
+        AI_LMStudio["LM Studio\nMedical LLM Server"]
+    end
+
+    U -->|1. Upload PDF| FE_UI
+    FE_API -->|2. POST /upload_pdf| B_Upload
+    B_Upload -->|3. Store original| DB_S3
+    B_Upload -->|4. Trigger processing| B_RAG
+    B_RAG -->|5. Extract text, tables, images| DB_S3
+    B_RAG -->|6. Generate embeddings| AI_HF
+    AI_HF -->|7. Return embeddings| B_RAG
+    B_RAG -->|8. Store embeddings| DB_Mongo
+
+    U -->|A. Ask a question| FE_UI
+    FE_API -->|B. POST /auto_ask_stream| B_Router
+    B_Router --> B_Intent
+    B_Intent -->|C. Classify as 'retrieval'| B_RAG
+    B_RAG -->|D. Retrieve chunks| DB_Mongo
+    B_RAG -->|E. Fetch images/tables| DB_Redis
+    DB_Redis -->|F. Cache miss → fetch| DB_S3
+    B_RAG -->|G. Build prompt| AI_LMStudio
+    AI_LMStudio -->|H. Generate response| B_RAG
+    B_RAG -->|I. Stream back result| B_Router
+    B_Router --> B_Chat
+    B_Chat -->|J. Store chat session| DB_Redis
+    B_Router -->|K. Stream response| FE_API
+    FE_API -->|L. Display in UI| FE_UI
+```
