@@ -1,8 +1,0 @@
-2025-07-18 18:18:24 - INFO - USER_MESSAGE: Are there specific warnings for women who are pregnant or may become pregnant? What about for men with partners who may become pregnant?
-
-2025-07-18 18:18:24 - INFO - INTENT_CLASSIFICATION: query='Are there specific warnings for women who are preg...' intent=retrieval confidence=None
-2025-07-18 18:18:27 - INFO - DOCUMENT_SELECTION: query='Are there specific warnings for women who are preg...' selected='Enhertu' score=2.8284059315387116 considered=10
-2025-07-18 18:18:50 - INFO - RAG_PROCESS: query='Are there specific warnings for women who are preg...' doc='Enhertu' chunks=5 response_len=1064
-2025-07-18 18:18:50 - INFO - BOT_RESPONSE: **Warnings and Precautions: Pregnancy & Fertility Considerations**
-
-### **For Women (or Those Who Ma... | METADATA: {"type": "rag_answer", "selected_document": "Enhertu", "selection_score": 2.8284059315387116, "documents_considered": 10}

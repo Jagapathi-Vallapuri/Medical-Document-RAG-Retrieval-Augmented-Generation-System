@@ -1,5 +1,0 @@
-2025-07-18 16:47:05 - INFO - USER_MESSAGE: Why did the researchers choose to adapt a staging system from human breast cancer (the AJCC Cancer Staging Manual)?
-2025-07-18 16:49:05 - INFO - INTENT_CLASSIFICATION: query='Why did the researchers choose to adapt a staging ...' intent=retrieval confidence=None
-2025-07-18 16:49:10 - INFO - DOCUMENT_SELECTION: query='Why did the researchers choose to adapt a staging ...' selected='40150308' score=3.412975526540756 considered=6
-2025-07-18 16:49:28 - ERROR - ERROR_STREAM_ERROR: Error code: 400 - {'error': 'The model has crashed without additional information. (Exit code: 18446744072635812000)'}
-2025-07-18 16:49:28 - ERROR - ERROR_CONTEXT: {"message": "Why did the researchers choose to adapt a staging system from human breast cancer (the AJCC Cancer Staging Manual)?", "error_type": "BadRequestError"}
